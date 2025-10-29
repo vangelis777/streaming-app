@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Services\StreamingApiService;
+
+class DiscoverController extends Controller
+{
+    protected $apiService;
+
+    public function __construct(StreamingApiService $apiService)
+    {
+        $this->apiService = $apiService;
+    }
+
+    /**
+     * Handle the main request for the Discover page.
+     * This will show search results OR a discover feed.
+     */
+    public function __invoke(Request $request)
+    {
+        $searchTerm = $request->query('search');
+        $searchResult = null;
+        $movies = null;
+        $error = null;
+
+        try {
+            if ($searchTerm) {
+                // A search is being performed
+                $searchResult = $this->apiService->searchByTitle($searchTerm);
+                if (isset($searchResult['error'])) {
+                    $error = $searchResult['error'];
+                    $searchResult = null;
+                }
+            } else {
+                // No search, show the default "discover" feed
+                $discoverFeed = $this->apiService->getDiscoverFeed('gr', 'netflix');
+                if (isset($discoverFeed['error'])) {
+                    $error = $discoverFeed['error'];
+                } else {
+                    $movies = $discoverFeed['shows'] ?? [];
+                }
+            }
+        } catch (\Exception $e) {
+            $error = 'An unexpected error occurred: ' . $e->getMessage();
+        }
+
+        return view('discover', [
+            'searchTerm' => $searchTerm,
+            'searchResult' => $searchResult,
+            'movies' => $movies,
+            'error' => $error,
+        ]);
+    }
+
+    /**
+     * NEW: Handle the API request for search suggestions.
+     */
+    public function suggest(Request $request)
+    {
+        $query = $request->query('q');
+
+        if (empty($query)) {
+            return response()->json([]);
+        }
+
+        $suggestions = $this->apiService->getSearchSuggestions($query);
+
+        if (isset($suggestions['error'])) {
+            return response()->json(['error' => $suggestions['error']], 500);
+        }
+
+        return response()->json($suggestions);
+    }
+}
